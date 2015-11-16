@@ -1,0 +1,47 @@
+import cv2
+import numpy as np
+import time
+import imgMod
+import math
+
+WHITE = 255
+BLACK = 0
+THRESH = 127
+TDELTA = 0.2
+
+def takeVideo():
+	cam_index = 0
+	cap = cv2.VideoCapture(cam_index)
+	while(True):
+		startTime = time.clock()
+		imgProcess(cap)
+		if(cv2.waitKey(10) == 27):
+			break
+		endTime = time.clock()
+		time.sleep(max(0,(TDELTA - endTime + startTime)))
+
+	cap.release()
+	cv2.destroyAllWindows()
+
+def imgProcess(cap):
+	ret, frame = cap.read()
+	frame = imgMod.redMask(frame)
+	frame = imgMod.erode(frame,10)
+	frame = imgMod.dilate(frame,20)
+	frame = cv2.cvtColor(frame,cv2.COLOR_GRAY2BGR)
+	total = (0,0)	
+	count = 0
+	imgSize = frame.shape
+	for x in range(0,imgSize[0],20):
+		for y in range(0,imgSize[1],20):
+			if(list(frame[x,y]) == [255,255,255]):
+				total = (total[0] + y,total[1] + x)
+				count += 1
+	avg = (-100,-100)
+	if(count != 0):
+		avg = (total[0]//count,total[1]//count)
+	greenCircle = cv2.circle(frame, avg, 30,(0,255,0),3)
+
+	cv2.imshow("Ukefish",greenCircle)
+	
+takeVideo()

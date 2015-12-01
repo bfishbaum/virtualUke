@@ -7,11 +7,11 @@ THRESH = 127
 
 def cropImage(frame,sizeX,sizeY):
 	size = frame.shape
-	x1 = (size[0] - sizeX)//2
-	x2 = x1 + sizeX
-	y1 = (size[1] - sizeY)//2
-	y2 = y1 + sizeY
-	return frame[x1:x2,y1:y2]
+	y1 = (size[0] - sizeX)//2
+	y2 = x1 + sizeX
+	x1 = (size[1] - sizeY)//2
+	x2 = y1 + sizeY
+	return frame[y1:y2,x1:x2]
 
 def redMask(frame):
 	min1 = np.uint8([[0,50,50]])
@@ -22,10 +22,17 @@ def redMask(frame):
 
 	return cv2.add(cv2.inRange(hsv,min1,max1), cv2.inRange(hsv,min2,max2))
 
-def blackMask(frame):
-	min = np.uint8([[ 0, 0, 0]])
-	max = np.uint8([[20,20,20]])
+def greenMask(frame):
+	min = np.uint8([[ 40, 50, 50]])
+	max = np.uint8([[ 60,255,255]])
+	hsv = cv2.cvtColor(frame,cv2.COLOR_BGR2HSV)
 
+	return cv2.inRange(hsv,min,max)
+
+def blackMask(frame):
+	min = np.uint8([[  0,  0,  0]])
+	max = np.uint8([[180,255, 25]])
+		
 	return cv2.inRange(frame,min,max)
 
 
@@ -60,76 +67,30 @@ def blur(image, strength):
 # find the centers of all the blotches 
 # requires image to be binary
 # accuracy is int, lower is more accurate, min at one
+	
 def findBlotches(image,accuracy):
 	pointSet = set()
-	def floodFillPoints(array,row,col):
-		if(row < 0 or row >= len(array) or col < 0 or col > len(array[0])): return []
-		if((row,col) in pointSet): return []
-		else: pointSet.add((row,col))
-		if(array[row][col] == 0): return []
-		else:
-			temp1 = floodFillPoints(array,row+1,col)
-			temp2 = floodFillPoints(array,row-1,col)
-			temp3 = floodFillPoints(array,row,col-1)
-			temp4 = floodFillPoints(array,row,col+1)
-			return [(row,col)] + temp1 + temp2 + temp3 + temp4
-		
-	image = cv2.cvtColor(image,cv2.COLOR_GRAY2BGR)
 	size = image.shape
-	imgArray = []
-	for x in range(0,size[0],accuracy):
-		tempArray = []
-		for y in range(0,size[1],accuracy):
-			if(list(image[x,y]) == [255,255,255]):
-				tempArray += [1]
-			else:
-				tempArray += [0]
-		imgArray += [tempArray]
-
-	blotchArrays = []
-	for row in range(len(imgArray)):
-		for col in range(len(imgArray[row])):
-			blotch = [floodFillPoints(imgArray,row,col)]
-			if(blotch != [[]]):
-				blotchArrays += blotch
-	
-	avgArray = []
-	for blotch in blotchArrays:
-		avgX = 0
-		avgY = 0
-		for point in blotch:
-			avgX += point[0]
-			avgY += point[1]
-		avgX = avgX * accuracy / len(blotch)
-		avgY = avgY * accuracy / len(blotch)
-		avgArray += [[avgX,avgY,len(blotch)]]
-
-	return avgArray
-	
-def fasterFindBlotches(image,accuracy):
-	pointSet = set()
-	size = image.shape
-	image = cv2.cvtColor(image,cv2.COLOR_GRAY2BGR)
 
 	def floodFillPoints(x,y):
-		if(x < 0 or x >= size[0] or y < 0 or y >= size[1]):
+		if(x < 0 or x >= size[1] or y < 0 or y >= size[0]):
 			return []
-		if((x,y) in pointSet):
-			return []
-		else:
-			pointSet.add((x,y))
-		if(list(image[x,y]) != [255,255,255]):
+		if((y,x) in pointSet):
 			return []
 		else:
+			pointSet.add((y,x))
+		if(image[y,x] == 255):
 			temp1 = floodFillPoints(x+accuracy,y)
 			temp2 = floodFillPoints(x-accuracy,y)
 			temp3 = floodFillPoints(x,y-accuracy)
 			temp4 = floodFillPoints(x,y+accuracy)
 			return [(x,y)] + temp1 + temp2 + temp3 + temp4
+		else:
+			return []
 	
 	blotchArrays = []	
-	for x in range(0,size[0],accuracy):
-		for y in range(0,size[1],accuracy):
+	for x in range(0,size[1],accuracy):
+		for y in range(0,size[0],accuracy):
 			blotch = floodFillPoints(x,y)
 			if(blotch != []):
 				blotchArrays += [blotch]
@@ -139,11 +100,11 @@ def fasterFindBlotches(image,accuracy):
 		avgX = 0
 		avgY = 0
 		for point in blotch:
-			avgX += point[0]
-			avgY += point[1]
-		avgX = avgX / len(blotch)
-		avgY = avgY / len(blotch)
-		avgArray += [[avgX,avgY,(len(blotch)*accuracy)**0.5]]
-
+			avgX += point[1]
+			avgY += point[0]
+		avgX = int(avgX / len(blotch))
+		avgY = int(avgY / len(blotch))
+		avgArray += [[avgY,avgX,(len(blotch)*accuracy)**0.5]]
+	
 	return avgArray
 	

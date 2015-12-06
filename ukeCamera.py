@@ -3,30 +3,20 @@ import numpy as np
 import time
 import imgMod
 import math
+from mathFuncs import *
 from wavObject import *
 
-WHITE = 255
-BLACK = 0
-THRESH = 127
-TDELTA = 0.2
 
-def sumListTuple(a):
-	result = [0 for i in range(len(a[0]))]
-	for tuple in a:
-		for i in range(len(tuple)):
-			result[i] += tuple[i]
-	return result
-
-class UkeData(object):
+class FakeUke(object):
 	def __init__(self,corners):
 		self.holeSpot = (0,0)
-		self.length = 0
-		self.rot = 0
+
 		self.fingers = []
 		self.strumFinger = (0,0)
-		self.strumFingerAbove = False
+		self.strumFingerAbove = None
 		self.corners = corners
 		self.foundCorners = False
+		self.foundStrumFinger = False
 		# strum line is of form y = ax + b
 		self.strumLine = (0,0)
 
@@ -36,32 +26,42 @@ class UkeData(object):
 
 		self.fretPoints = []
 
+		# for testing purposes
+		self.currentChord = "C"
+
 	#finds the corners, takes in binary image
 	def updateCorners(self,frame):
-		distance = 5
-		size = 10
-		dirList = [(x,y) for x in range(-size,size+1) for y in range(-size,size+1)]
-		for i in range(len(self.corners)):
-			avgX = 0
-			avgY = 0
-			counter = 0
-			for dir in dirList:
-				xPos = self.corners[i][1] + distance * dir[0]
-				yPos = self.corners[i][0] + distance * dir[1]
-				try:
-					if(frame[xPos,yPos] == 255):
-						avgX += xPos
-						avgY += yPos
-						counter += 1
-				except:
-					pass
-			if(counter != 0):
-				self.corners[i] = (int(avgY/counter),int(avgX/counter))
-		self.updateStrumLine()
-
+		if(self.foundCorners):
+			cornersSeen = 0
+			distance = 5
+			size = 10
+			dirList = [(x,y) for x in range(-size,size+1) for y in range(-size,size+1)]
+			for i in range(len(self.corners)):
+				avgX,avgY = 0,0
+				counter = 0
+				for dir in dirList:
+					xPos = self.corners[i][0] + distance * dir[0]
+					yPos = self.corners[i][1] + distance * dir[1]
+					try:
+						if(frame[yPos,xPos] == 255):
+							avgX += xPos
+							avgY += yPos
+							counter += 1
+					except: pass
+				if(counter != 0):
+					self.corners[i] = (int(avgX/counter),int(avgY/counter))
+					cornersSeen += 1
+			if(cornersSeen == 0):
+				self.foundCorners = False	
+			self.updateStrumLine()
+			self.checkChordLines()
+		else:
+			blotchArray = imgMod.findBlotches(frame,10)
+			if(len(blotchArray) == 4):
+				self.corners = [(b[0],b[1]) for b in blotchArray]
+				self.foundCorners = True
 
 	def showUkulele(self,frame):
-		frame = cv2.cvtColor(frame,cv2.COLOR_GRAY2BGR)
 		frame = cv2.circle(frame,(self.holeSpot),50,(0,255,0),3)
 		x1 = 20
 		strum1 = (x1,int(self.strumLine[0]*x1+self.strumLine[1]))
@@ -70,9 +70,15 @@ class UkeData(object):
 		frame = cv2.line(frame,strum1,strum2,(255,255,0),3)
 		for corner in self.corners:
 			frame = cv2.circle(frame,(corner),20,(255,0,0),3)
-		for point in self.fretPoints:
-			frame = cv2.circle(frame,(point),14,(0,255,255),3)
-		self.updateFingers(frame)
+#		for line in self.fretPoints:
+#			for point in line:
+#				frame = cv2.circle(frame,(point),14,(0,255,255),3)
+		for finger in self.fingers:
+			frame = cv2.circle(frame,(finger),14,(0,255,255),3)
+		textMargin = 100
+		textFont = cv2.FONT_HERSHEY_SIMPLEX
+		cv2.putText(frame,self.currentChord,(frame.shape[1]-textMargin,textMargin),textFont,4,(255,255,255),2,cv2.LINE_AA)
+		frame = cv2.circle(frame,(self.strumFinger),40,(0,0,255),3)
 		return frame
 
 	def updateStrumLine(self):
@@ -90,25 +96,54 @@ class UkeData(object):
 			result[0] = (right[1]-left[1])/(1)
 		result[1] = int(left[1]-(result[0]*left[0]))
 		self.strumLine = result
-	
+
+	def updateStrumFinger(self,frame):
+		if(self.foundStrumFinger):
+			distance = 5
+			size = 3
+			dirList = [(x,y) for x in range(-size,size+1) for y in range(-size,size+1)]
+			avgX,avgY = 0,0
+			counter = 0
+			for dir in dirList:
+				xPos = self.strumFinger[0] + distance * dir[0]
+				yPos = self.strumFinger[1] + distance * dir[1]
+				try:
+					if(frame[yPos,xPos] == 255):
+						avgX += xPos
+						avgY += yPos
+						counter += 1
+				except: pass
+			if(counter != 0):
+				avgX = int(avgX/counter)
+				avgY = int(avgY/counter)
+				self.strumFinger = (avgX,avgY)
+			self.checkForStrum()
+		else:
+			blotchArray = imgMod.findBlotches(frame,10)
+			if(len(blotchArray) >= 1):
+				biggestBlotch = max([x for x in blotchArray],key = lambda x: x[2])
+				self.strumFinger = (biggestBlotch[0],biggestBlotch[1])
+			self.checkForStrum()
+		
 	def checkForStrum(self):
 		above = False
-		strumY = self.strumFinger[1] * self.strumLine[0] + self.strumLine[1]
-		above = (strumY >= self.strumFinger[1])
-		if(above != self.strumFingerAbove):
+		strumY = self.strumFinger[0] * self.strumLine[0] + self.strumLine[1]
+		above = strumY >= self.strumFinger[1]
+		if(not above and self.strumFingerAbove):
 			self.strumFingerAbove = above
 			self.strummed()
+		else:
+			self.strumFingerAbove = above
 		
-	def updateFingers(self,frame):
-		cols = [x[0] for x in self.corners]
-		rows = [x[1] for x in self.corners]
-		maxCol = max(cols)
-		minCol = min(cols)
-		maxRow = max(rows)
-		minRow = min(rows)
-		fretBoard = self.masterImage[minRow:maxRow, minCol:maxCol]
-		fretBoard = imgMod.blackMask(fretBoard) 
-	
+	def strummed(self):
+		print("\a")
+		chordString = self.checkFretPoints()
+		print(chordString)
+		for chord in CHORD_LIST:
+			if(chord.startswith(chordString)):
+				return
+		self.currentChord = ""
+
 	def updateFretPoints(self,left,right):
 		l1,l2 = left[0],left[1]
 		lDX = l2[0]-l1[0]
@@ -132,52 +167,79 @@ class UkeData(object):
 		self.fretPoints = fretPoints
 	
 	def checkFretPoints(self):
-		fretBoard = imgMod.blackMask(self.masterImage)
+		fretBoard = imgMod.blackMask(self.getFretBoard())
+		fretBoard = imgMod.dilate(fretBoard,5)
+		# chord string refers to 4 numbers representing
+		# the fingers' positions on the strings
 		chordString = ""
+		# uke string refers to each string on the ukulele,
+		# not a string of characters
 		for ukeString in self.fretPoints:
 			stringDown = False
 			for i in range(len(ukeString)):
 				point = ukeString[i]
-				if(fretBoard[point[1],point[0]] == 1):
-					chordString += str(i)
+				if(self.checkFretForFinger(point,fretBoard)):
+					chordString += str(i+1)
 					stringDown = True
 					break
 			if(not stringDown):
 				chordString += "0"
 		return chordString			
 
-def takeVideo():
-	cam_index = 0
-	cap = cv2.VideoCapture(cam_index)
-	found = False
-	ukulele = UkeData([(0,0) for x in range(4)])
-	time.sleep(1)
-	while(True):
-		startTime = time.process_time()
+	def checkChordLines(self):
+		# makes sure board is ok, and there is a blotch
+		try:
+			fretBoard = imgMod.blackMask(self.getFretBoard())
+			fretBoard = imgMod.dilate(fretBoard,5)
+			blotch = max(imgMod.findBlotches(fretBoard,10),key = lambda x: x[2])
+		except: return None
+		
+		# this function finds the largest blotch
+		# and finds where it is located horizontally
+		# on the fret board
 
-		findUkulele(cap,ukulele)
+		finger = (blotch[0]+minX,blotch[1]+minY)
+		rightCorners = sorted(self.corners,key=lambda x:x[0])[:2]
 
-		endTime = time.process_time()
-		time.sleep(max(0,0.04 + startTime - endTime))
-		if(cv2.waitKey(10) == 27):
-			break
-	cap.release()
-	cv2.destroyAllWindows()
+		area = mathFuncs.herosFormula(finger,rightCorners[0],rightCorners[1])
+		altitude = 2*(area/mathFuncs.distance(rightCorners[0],rightCorners[1]))
 
-def findUkulele(cap,uke):
-	ret, frame = cap.read()
-	uke.masterImage = frame
-	greenMask = imgMod.greenMask(frame)
-	greenMask = imgMod.erode(greenMask,8)
-	greenMask = imgMod.dilate(greenMask,12)
-	if(not uke.foundCorners):
-		blotchArray = imgMod.findBlotches(greenMask,8)
-		if(len(blotchArray) == 4):
-			uke.corners = [(b[0],b[1]) for b in blotchArray]
-			uke.foundCorners = True
-	else:
-		uke.updateCorners(greenMask)
-		greenMask = uke.showUkulele(greenMask)
-	cv2.imshow("Uke",greenMask)
+		topCorners = sorted(self.corners,key=lambda x:x[1])[:2]
+		fretLength = mathFuncs.distance(topCorners[0],topCorners[1])
+		xPosNorm = altitude/fretLength
+		
+		if(xPosNorm < 0.25):
+			return "A"
+		elif(xPosNorm < 0.5):
+			return "F"
+		elif(xPosNorm < 0.75):
+			return "C"
+		elif(xPosNorm < 1):
+			return "G"
+		
+	
+	# returns the slice of the master image
+	# that corresponds to the fretboard
+	def getFretBoard(self):
+		maxX = max(self.corners, key = lambda x: x[0])[0]
+		minX = min(self.corners, key = lambda x: x[0])[0]
+		maxY = max(self.corners, key = lambda x: x[1])[1]
+		minY = min(self.corners, key = lambda x: x[1])[1]
+		try: 
+			return self.masterImage[minY:maxY,minX:maxX]
+		except:
+			return None
+	
+	def checkFretForFinger(self,point,img):
+		# checks five pixel square
+		distance = 5
+		size = 5
+		dirList = [(x*distance+point[0],y*distance+point[1]) for x in range(-size,size+1) for y in range(-size,size+1)]
+		for dir in dirList:
+			try:
+				if(img[dir[1],dir[0]] == 255):
+					return True
+			except: pass
+		return False
+		
 
-takeVideo()

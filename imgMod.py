@@ -16,8 +16,9 @@ def cropImage(frame,sizeX,sizeY):
 def redMask(frame):
 	min1 = np.uint8([[0,50,50]])
 	max1 = np.uint8([[10,255,255]])
-	min2 = np.uint8([[163,50,50]])
+	min2 = np.uint8([[170,50,50]])
 	max2 = np.uint8([[180,255,255]])
+
 	hsv = cv2.cvtColor(frame,cv2.COLOR_BGR2HSV)
 
 	return cv2.add(cv2.inRange(hsv,min1,max1), cv2.inRange(hsv,min2,max2))

@@ -34,8 +34,3 @@ class WAV(object):
 
 	def __del__(self):
 		self.close()
-		
-c = WAV("chordC")
-g = WAV("chordG")
-c.play()
-g.play()

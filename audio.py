@@ -55,15 +55,16 @@ class Stream(object):
 		return mix
 		
 stream = Stream()
+stream2 = Stream()
 stream.addFile("chordC")
+stream2.addFile("chordG")
 counter = 0
 while True:
 	counter += 1
 	time.sleep(0.01)
-	stream.play()
-	print(counter)
-	if(counter == 60):
-		stream.addFile("chordG")
+#	stream.play()
+	if(counter >= 20):
+		stream2.play()
 	elif(counter >= 200):
 		break
 stream.close()

@@ -109,3 +109,20 @@ def findBlotches(image,accuracy):
 	
 	return avgArray
 	
+def avgLocOfSurrounding(frame,point,dirArray):
+	avgX = 0
+	avgY = 0
+	counter = 0
+	for dir in dirArray:
+		xPos = point[0] + distance * dir[0]
+		yPos = point[1] + distance * dir[1]
+		try:
+			if(frame[yPos,xPos] == 255):
+				avgX += xPos
+				avgY += yPos
+				counter += 1
+		except: pass
+	if(counter != 0):
+		return (int(avgX/counter),int(avgY/counter))
+	else:
+		return None

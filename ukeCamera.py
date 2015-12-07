@@ -9,8 +9,6 @@ from wavObject import *
 
 class FakeUke(object):
 	def __init__(self,corners):
-		self.holeSpot = (0,0)
-
 		self.fingers = []
 		self.strumFinger = (0,0)
 		self.strumFingerAbove = None
@@ -37,49 +35,20 @@ class FakeUke(object):
 			size = 10
 			dirList = [(x,y) for x in range(-size,size+1) for y in range(-size,size+1)]
 			for i in range(len(self.corners)):
-				avgX,avgY = 0,0
-				counter = 0
-				for dir in dirList:
-					xPos = self.corners[i][0] + distance * dir[0]
-					yPos = self.corners[i][1] + distance * dir[1]
-					try:
-						if(frame[yPos,xPos] == 255):
-							avgX += xPos
-							avgY += yPos
-							counter += 1
-					except: pass
-				if(counter != 0):
-					self.corners[i] = (int(avgX/counter),int(avgY/counter))
+				newPoint = imgMod.avgLocOfSurrounding(frame,self.corners[i],dirList)
+				if(newPoint != None):
+					self.corners[i] = 0
 					cornersSeen += 1
 			if(cornersSeen == 0):
 				self.foundCorners = False	
-			self.updateStrumLine()
-			self.checkChordLines()
+			else:
+				self.updateStrumLine()
+				self.checkChordLines()
 		else:
 			blotchArray = imgMod.findBlotches(frame,10)
 			if(len(blotchArray) == 4):
 				self.corners = [(b[0],b[1]) for b in blotchArray]
 				self.foundCorners = True
-
-	def showUkulele(self,frame):
-		frame = cv2.circle(frame,(self.holeSpot),50,(0,255,0),3)
-		x1 = 20
-		strum1 = (x1,int(self.strumLine[0]*x1+self.strumLine[1]))
-		x2 = frame.shape[1]-x1
-		strum2 = (x2,int(self.strumLine[0]*x2+self.strumLine[1]))
-		frame = cv2.line(frame,strum1,strum2,(255,255,0),3)
-		for corner in self.corners:
-			frame = cv2.circle(frame,(corner),20,(255,0,0),3)
-#		for line in self.fretPoints:
-#			for point in line:
-#				frame = cv2.circle(frame,(point),14,(0,255,255),3)
-		for finger in self.fingers:
-			frame = cv2.circle(frame,(finger),14,(0,255,255),3)
-		textMargin = 100
-		textFont = cv2.FONT_HERSHEY_SIMPLEX
-		cv2.putText(frame,self.currentChord,(frame.shape[1]-textMargin,textMargin),textFont,4,(255,255,255),2,cv2.LINE_AA)
-		frame = cv2.circle(frame,(self.strumFinger),40,(0,0,255),3)
-		return frame
 
 	def updateStrumLine(self):
 		result = [0,0]
@@ -98,42 +67,18 @@ class FakeUke(object):
 		self.strumLine = result
 
 	def updateStrumFinger(self,frame):
-		if(self.foundStrumFinger):
-			distance = 5
-			size = 3
-			dirList = [(x,y) for x in range(-size,size+1) for y in range(-size,size+1)]
-			avgX,avgY = 0,0
-			counter = 0
-			for dir in dirList:
-				xPos = self.strumFinger[0] + distance * dir[0]
-				yPos = self.strumFinger[1] + distance * dir[1]
-				try:
-					if(frame[yPos,xPos] == 255):
-						avgX += xPos
-						avgY += yPos
-						counter += 1
-				except: pass
-			if(counter != 0):
-				avgX = int(avgX/counter)
-				avgY = int(avgY/counter)
-				self.strumFinger = (avgX,avgY)
-			self.checkForStrum()
-		else:
-			blotchArray = imgMod.findBlotches(frame,10)
-			if(len(blotchArray) >= 1):
-				biggestBlotch = max([x for x in blotchArray],key = lambda x: x[2])
-				self.strumFinger = (biggestBlotch[0],biggestBlotch[1])
-			self.checkForStrum()
+		blotchArray = imgMod.findBlotches(frame,10) if(len(blotchArray) >= 1):
+			biggestBlotch = max([x for x in blotchArray],key = lambda x: x[2])
+			self.strumFinger = (biggestBlotch[0],biggestBlotch[1])
+		self.checkForStrum()
 		
 	def checkForStrum(self):
 		above = False
 		strumY = self.strumFinger[0] * self.strumLine[0] + self.strumLine[1]
 		above = strumY >= self.strumFinger[1]
-		if(not above and self.strumFingerAbove):
-			self.strumFingerAbove = above
+		if(above and self.strumFingerAbove == True):
 			self.strummed()
-		else:
-			self.strumFingerAbove = above
+		self.strumFingerAbove = above
 		
 	def strummed(self):
 		print("\a")
@@ -186,6 +131,18 @@ class FakeUke(object):
 				chordString += "0"
 		return chordString			
 
+	def checkFretForFinger(self,point,img):
+		# checks five pixel square
+		distance = 1
+		size = 5
+		dirList = [(x*distance+point[0],y*distance+point[1]) for x in range(-size,size+1) for y in range(-size,size+1)]
+		for dir in dirList:
+			try:
+				if(img[dir[1],dir[0]] == 255):
+					return True
+			except: pass
+		return False
+
 	def checkChordLines(self):
 		# makes sure board is ok, and there is a blotch
 		try:
@@ -230,16 +187,28 @@ class FakeUke(object):
 		except:
 			return None
 	
-	def checkFretForFinger(self,point,img):
-		# checks five pixel square
-		distance = 5
-		size = 5
-		dirList = [(x*distance+point[0],y*distance+point[1]) for x in range(-size,size+1) for y in range(-size,size+1)]
-		for dir in dirList:
-			try:
-				if(img[dir[1],dir[0]] == 255):
-					return True
-			except: pass
-		return False
-		
 
+	def showUkulele(self,frame):
+		x1 = -20
+		strum1 = (x1,int(self.strumLine[0]*x1+self.strumLine[1]))
+		x2 = frame.shape[1]-x1
+		strum2 = (x2,int(self.strumLine[0]*x2+self.strumLine[1]))
+		frame = cv2.line(frame,strum1,strum2,(255,255,0),3)
+
+		for corner in self.corners:
+			frame = cv2.circle(frame,(corner),20,(255,0,0),3)
+
+#		for line in self.fretPoints:
+#			for point in line:
+#				frame = cv2.circle(frame,(point),14,(0,255,255),3)
+
+		for finger in self.fingers:
+			frame = cv2.circle(frame,(finger),14,(0,255,255),3)
+
+		textMargin = 100
+		textFont = cv2.FONT_HERSHEY_SIMPLEX
+		cv2.putText(frame,self.currentChord,(frame.shape[1]-textMargin,textMargin),textFont,4,(255,255,255),2,cv2.LINE_AA)
+
+		frame = cv2.circle(frame,(self.strumFinger),40,(0,0,255),3)
+
+		return frame

@@ -3,8 +3,8 @@ import numpy as np
 import time
 import imgMod
 import math
-from mathFuncs import *
-from wavObject import *
+import mathFuncs
+import wavObject
 
 
 class FakeUke(object):
@@ -17,7 +17,7 @@ class FakeUke(object):
 		self.foundStrumFinger = False
 		# strum line is of form y = ax + b
 		self.strumLine = (0,0)
-
+		self.soundObject = None
 		# contains unedited picture of camera input for reuse,
 		# never to be edited, only copied from
 		self.masterImage = None
@@ -33,17 +33,16 @@ class FakeUke(object):
 			cornersSeen = 0
 			distance = 5
 			size = 10
-			dirList = [(x,y) for x in range(-size,size+1) for y in range(-size,size+1)]
+			dirList = [(x*distance,y*distance) for x in range(-size,size+1) for y in range(-size,size+1)]
 			for i in range(len(self.corners)):
 				newPoint = imgMod.avgLocOfSurrounding(frame,self.corners[i],dirList)
 				if(newPoint != None):
-					self.corners[i] = 0
+					self.corners[i] = newPoint
 					cornersSeen += 1
 			if(cornersSeen == 0):
 				self.foundCorners = False	
 			else:
 				self.updateStrumLine()
-				self.checkChordLines()
 		else:
 			blotchArray = imgMod.findBlotches(frame,10)
 			if(len(blotchArray) == 4):
@@ -59,7 +58,7 @@ class FakeUke(object):
 		left  = (int((left[0][0] + left[1][0])/2), int((left[0][1] + left[1][1])/2))
 		right = (int((right[0][0]+ right[1][0])/2),int((right[0][1]+ right[1][1])/2))
 		# prevent the line from being vertical
-		if(right[1] != left[1]):
+		if(right[0] != left[0]):
 			result[0] = (right[1]-left[1])/(right[0]-left[0])
 		else:
 			result[0] = (right[1]-left[1])/(1)
@@ -67,7 +66,8 @@ class FakeUke(object):
 		self.strumLine = result
 
 	def updateStrumFinger(self,frame):
-		blotchArray = imgMod.findBlotches(frame,10) if(len(blotchArray) >= 1):
+		blotchArray = imgMod.findBlotches(frame,10)
+		if(len(blotchArray) >= 1):
 			biggestBlotch = max([x for x in blotchArray],key = lambda x: x[2])
 			self.strumFinger = (biggestBlotch[0],biggestBlotch[1])
 		self.checkForStrum()
@@ -76,18 +76,19 @@ class FakeUke(object):
 		above = False
 		strumY = self.strumFinger[0] * self.strumLine[0] + self.strumLine[1]
 		above = strumY >= self.strumFinger[1]
-		if(above and self.strumFingerAbove == True):
+		if(not above and self.strumFingerAbove == True):
 			self.strummed()
 		self.strumFingerAbove = above
 		
 	def strummed(self):
-		print("\a")
-		chordString = self.checkFretPoints()
-		print(chordString)
-		for chord in CHORD_LIST:
-			if(chord.startswith(chordString)):
-				return
-		self.currentChord = ""
+		chordString = self.checkChordLines()
+		if(chordString != None):
+			self.currentChord = chordString
+#			self.soundObject = wavObject.WAV("chord" + chordString)
+			sound = wavObject.WAV("chord" + chordString)
+			sound.play()
+
+			
 
 	def updateFretPoints(self,left,right):
 		l1,l2 = left[0],left[1]
@@ -112,7 +113,8 @@ class FakeUke(object):
 		self.fretPoints = fretPoints
 	
 	def checkFretPoints(self):
-		fretBoard = imgMod.blackMask(self.getFretBoard())
+		_,fretBoard = self.getFretBoard()
+		fretBoard = imgMod.blueMask(fretBoard)
 		fretBoard = imgMod.dilate(fretBoard,5)
 		# chord string refers to 4 numbers representing
 		# the fingers' positions on the strings
@@ -134,7 +136,6 @@ class FakeUke(object):
 	def checkFretForFinger(self,point,img):
 		# checks five pixel square
 		distance = 1
-		size = 5
 		dirList = [(x*distance+point[0],y*distance+point[1]) for x in range(-size,size+1) for y in range(-size,size+1)]
 		for dir in dirList:
 			try:
@@ -146,25 +147,37 @@ class FakeUke(object):
 	def checkChordLines(self):
 		# makes sure board is ok, and there is a blotch
 		try:
-			fretBoard = imgMod.blackMask(self.getFretBoard())
-			fretBoard = imgMod.dilate(fretBoard,5)
+			rect, fretBoard = self.getFretBoard()
+			fretBoard = imgMod.blueMask(fretBoard)
+			fretBoard = imgMod.dilate(imgMod.erode(fretBoard,5),10)
+		except:
+			return None
+		try:
 			blotch = max(imgMod.findBlotches(fretBoard,10),key = lambda x: x[2])
-		except: return None
+		except:
+			return None
 		
 		# this function finds the largest blotch
 		# and finds where it is located horizontally
 		# on the fret board
 
-		finger = (blotch[0]+minX,blotch[1]+minY)
+		finger = (blotch[0]+rect[0],blotch[1]+rect[2])
+		self.fingers = [finger]
 		rightCorners = sorted(self.corners,key=lambda x:x[0])[:2]
 
 		area = mathFuncs.herosFormula(finger,rightCorners[0],rightCorners[1])
-		altitude = 2*(area/mathFuncs.distance(rightCorners[0],rightCorners[1]))
+		try:
+			altitude = 2*(area/mathFuncs.distance(rightCorners[0],rightCorners[1]))
+		except:
+			altitude = 100
 
 		topCorners = sorted(self.corners,key=lambda x:x[1])[:2]
 		fretLength = mathFuncs.distance(topCorners[0],topCorners[1])
-		xPosNorm = altitude/fretLength
-		
+		try:
+			xPosNorm = altitude/fretLength
+		except:
+			return None
+
 		if(xPosNorm < 0.25):
 			return "A"
 		elif(xPosNorm < 0.5):
@@ -183,12 +196,13 @@ class FakeUke(object):
 		maxY = max(self.corners, key = lambda x: x[1])[1]
 		minY = min(self.corners, key = lambda x: x[1])[1]
 		try: 
-			return self.masterImage[minY:maxY,minX:maxX]
+			return (minX,maxX,minY,maxY), self.masterImage[minY:maxY,minX:maxX]
 		except:
 			return None
 	
 
-	def showUkulele(self,frame):
+	def showUkulele(self):
+		frame = self.masterImage
 		x1 = -20
 		strum1 = (x1,int(self.strumLine[0]*x1+self.strumLine[1]))
 		x2 = frame.shape[1]-x1
@@ -207,8 +221,13 @@ class FakeUke(object):
 
 		textMargin = 100
 		textFont = cv2.FONT_HERSHEY_SIMPLEX
-		cv2.putText(frame,self.currentChord,(frame.shape[1]-textMargin,textMargin),textFont,4,(255,255,255),2,cv2.LINE_AA)
+		cv2.putText(frame,self.currentChord,(frame.shape[1]-textMargin,textMargin),textFont,4,(255,0,255),2,cv2.LINE_AA)
 
 		frame = cv2.circle(frame,(self.strumFinger),40,(0,0,255),3)
 
 		return frame
+
+	def playSoundObject(self):
+		if(self.soundObject != None):
+			if(not self.soundObject.play()):
+				self.soundObject = None

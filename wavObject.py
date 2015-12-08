@@ -17,15 +17,16 @@ class WAV(object):
 						channels = 2,
 						rate = 44100,
 						output = True)
-		self.length = 1024
+		self.length = 10240
 		self.wf = wave.open("chords/" + file + ".wav")
 	
 	def play(self):
 		data = self.wf.readframes(self.length)
-		while(data != b''):
-			self.stream.write(data)
-			data = self.wf.readframes(self.length)
-		self.__del__()
+		if(data == b''):
+			return False
+		self.stream.write(data)
+		data = self.wf.readframes(self.length)
+		return True
 		
 	def close(self):
 		self.stream.stop_stream()

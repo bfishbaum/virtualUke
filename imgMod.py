@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 
+
 WHITE = 255
 BLACK = 0
 THRESH = 127
@@ -32,18 +33,16 @@ def greenMask(frame):
 
 def blackMask(frame):
 	min = np.uint8([[  0,  0,  0]])
-	max = np.uint8([[180,255, 25]])
-		
-	return cv2.inRange(frame,min,max)
-
-
-def balsaWoodMask(frame):
-	min = np.uint8([[0,0,160]])
-	max = np.uint8([[160,20,200]])
+	max = np.uint8([[180,255,200]])
 	hsv = cv2.cvtColor(frame,cv2.COLOR_BGR2HSV)
 	return cv2.inRange(hsv,min,max)
 
-	
+def blueMask(frame):
+	min = np.uint8([[110, 50, 50]])
+	max = np.uint8([[130,255,255]])
+	hsv = cv2.cvtColor(frame,cv2.COLOR_BGR2HSV)
+
+	return cv2.inRange(hsv,min,max)
 
 def erode(image,strength):
 	return cv2.erode(image,np.ones((strength,strength), np.uint8))
@@ -114,8 +113,8 @@ def avgLocOfSurrounding(frame,point,dirArray):
 	avgY = 0
 	counter = 0
 	for dir in dirArray:
-		xPos = point[0] + distance * dir[0]
-		yPos = point[1] + distance * dir[1]
+		xPos = point[0] + dir[0]
+		yPos = point[1] + dir[1]
 		try:
 			if(frame[yPos,xPos] == 255):
 				avgX += xPos

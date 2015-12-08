@@ -31,15 +31,15 @@ class FakeUke(object):
 	def updateCorners(self,frame):
 		if(self.foundCorners):
 			cornersSeen = 0
-			distance = 5
-			size = 10
+			distance = 15
+			size = 3
 			dirList = [(x*distance,y*distance) for x in range(-size,size+1) for y in range(-size,size+1)]
 			for i in range(len(self.corners)):
 				newPoint = imgMod.avgLocOfSurrounding(frame,self.corners[i],dirList)
 				if(newPoint != None):
 					self.corners[i] = newPoint
 					cornersSeen += 1
-			if(cornersSeen == 0):
+			if(cornersSeen <= 2):
 				self.foundCorners = False	
 			else:
 				self.updateStrumLine()
@@ -54,7 +54,6 @@ class FakeUke(object):
 		corners = sorted(self.corners,key=lambda x: x[0])
 		left  = corners[:2]
 		right = corners[2:]
-		self.updateFretPoints(left,right)
 		left  = (int((left[0][0] + left[1][0])/2), int((left[0][1] + left[1][1])/2))
 		right = (int((right[0][0]+ right[1][0])/2),int((right[0][1]+ right[1][1])/2))
 		# prevent the line from being vertical
@@ -66,11 +65,24 @@ class FakeUke(object):
 		self.strumLine = result
 
 	def updateStrumFinger(self,frame):
-		blotchArray = imgMod.findBlotches(frame,10)
-		if(len(blotchArray) >= 1):
-			biggestBlotch = max([x for x in blotchArray],key = lambda x: x[2])
-			self.strumFinger = (biggestBlotch[0],biggestBlotch[1])
-		self.checkForStrum()
+		if(self.foundStrumFinger):
+			distance = 12
+			size = 3
+			dirList = [(x*distance,y*distance) for x in range(-size,size+1) for y in range(-size,size+1)]
+			newPoint = imgMod.avgLocOfSurrounding(frame,self.strumFinger,dirList)
+			if(newPoint != None):
+				self.strumFinger = newPoint
+			else:
+				self.strumFinger = (0,0)
+				self.foundStrumFinger = False
+				self.strumFingerAbove = None
+			self.checkForStrum()
+		else:
+			blotchArray = imgMod.findBlotches(frame,10)
+			if(len(blotchArray) >= 1):
+				biggestBlotch = max([x for x in blotchArray],key = lambda x: x[2])
+				self.strumFinger = (biggestBlotch[0],biggestBlotch[1])
+				self.foundStrumFinger = True
 		
 	def checkForStrum(self):
 		above = False
@@ -87,8 +99,6 @@ class FakeUke(object):
 #			self.soundObject = wavObject.WAV("chord" + chordString)
 			sound = wavObject.WAV("chord" + chordString)
 			sound.play()
-
-			
 
 	def updateFretPoints(self,left,right):
 		l1,l2 = left[0],left[1]

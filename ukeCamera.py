@@ -5,6 +5,7 @@ import imgMod
 import math
 import mathFuncs
 import wavObject
+import pygame
 
 
 class FakeUke(object):
@@ -21,7 +22,7 @@ class FakeUke(object):
 		# contains unedited picture of camera input for reuse,
 		# never to be edited, only copied from
 		self.masterImage = None
-
+		pygame.mixer.init(frequency=22050, size=-16, channels=2, buffer=4096)
 		self.fretPoints = []
 
 		# for testing purposes
@@ -31,8 +32,8 @@ class FakeUke(object):
 	def updateCorners(self,frame):
 		if(self.foundCorners):
 			cornersSeen = 0
-			distance = 15
-			size = 3
+			distance = 8
+			size = 10
 			dirList = [(x*distance,y*distance) for x in range(-size,size+1) for y in range(-size,size+1)]
 			for i in range(len(self.corners)):
 				newPoint = imgMod.avgLocOfSurrounding(frame,self.corners[i],dirList)
@@ -67,7 +68,7 @@ class FakeUke(object):
 	def updateStrumFinger(self,frame):
 		if(self.foundStrumFinger):
 			distance = 12
-			size = 3
+			size = 10
 			dirList = [(x*distance,y*distance) for x in range(-size,size+1) for y in range(-size,size+1)]
 			newPoint = imgMod.avgLocOfSurrounding(frame,self.strumFinger,dirList)
 			if(newPoint != None):
@@ -76,7 +77,9 @@ class FakeUke(object):
 				self.strumFinger = (0,0)
 				self.foundStrumFinger = False
 				self.strumFingerAbove = None
-			self.checkForStrum()
+			
+			if(self.foundCorners):
+				self.checkForStrum()
 		else:
 			blotchArray = imgMod.findBlotches(frame,10)
 			if(len(blotchArray) >= 1):
@@ -96,68 +99,15 @@ class FakeUke(object):
 		chordString = self.checkChordLines()
 		if(chordString != None):
 			self.currentChord = chordString
-#			self.soundObject = wavObject.WAV("chord" + chordString)
-			sound = wavObject.WAV("chord" + chordString)
-			sound.play()
-
-	def updateFretPoints(self,left,right):
-		l1,l2 = left[0],left[1]
-		lDX = l2[0]-l1[0]
-		lDY = l2[1]-l1[1]
-		r1,r2 = right[0],right[1]
-		rDX = r2[0]-r1[0]
-		rDY = r2[1]-r1[1]
-		lPoints = [(int(l1[0] + lDX * x/8), int(l1[1] + lDY * x/8)) for x in range(1,8,2)]
-		lPoints.sort(key = lambda x: x[1])
-		rPoints = [(int(r1[0] + rDX * x/8), int(r1[1] + rDY * x/8)) for x in range(1,8,2)]
-		rPoints.sort(key = lambda x: x[1])
-		fretLines = [(lPoints[x],rPoints[x]) for x in range(4)]
-		fretPoints = []
-		for points in fretLines:
-			p1,p2 = points[0], points[1]
-			pDX = p2[0]-p1[0]
-			pDY = p2[1]-p1[1]
-			frets = [(int(p1[0] + pDX * x/8), int(p1[1] + pDY * x/8)) for x in range(1,8,2)]
-			frets.sort(key = lambda x: x[0])
-			fretPoints += [frets]
-		self.fretPoints = fretPoints
-	
-	def checkFretPoints(self):
-		_,fretBoard = self.getFretBoard()
-		fretBoard = imgMod.blueMask(fretBoard)
-		fretBoard = imgMod.dilate(fretBoard,5)
-		# chord string refers to 4 numbers representing
-		# the fingers' positions on the strings
-		chordString = ""
-		# uke string refers to each string on the ukulele,
-		# not a string of characters
-		for ukeString in self.fretPoints:
-			stringDown = False
-			for i in range(len(ukeString)):
-				point = ukeString[i]
-				if(self.checkFretForFinger(point,fretBoard)):
-					chordString += str(i+1)
-					stringDown = True
-					break
-			if(not stringDown):
-				chordString += "0"
-		return chordString			
-
-	def checkFretForFinger(self,point,img):
-		# checks five pixel square
-		distance = 1
-		dirList = [(x*distance+point[0],y*distance+point[1]) for x in range(-size,size+1) for y in range(-size,size+1)]
-		for dir in dirList:
-			try:
-				if(img[dir[1],dir[0]] == 255):
-					return True
-			except: pass
-		return False
+			chord = pygame.mixer.Sound("chords/chord" + chordString + ".wav")
+			chord.play()
 
 	def checkChordLines(self):
 		# makes sure board is ok, and there is a blotch
 		try:
+			print("here2")
 			rect, fretBoard = self.getFretBoard()
+			print("here3")
 			fretBoard = imgMod.blueMask(fretBoard)
 			fretBoard = imgMod.dilate(imgMod.erode(fretBoard,5),10)
 		except:
@@ -213,25 +163,32 @@ class FakeUke(object):
 
 	def showUkulele(self):
 		frame = self.masterImage
-		x1 = -20
-		strum1 = (x1,int(self.strumLine[0]*x1+self.strumLine[1]))
-		x2 = frame.shape[1]-x1
-		strum2 = (x2,int(self.strumLine[0]*x2+self.strumLine[1]))
-		frame = cv2.line(frame,strum1,strum2,(255,255,0),3)
+		# y,x, channels
+		size = frame.shape
+		textFont = cv2.FONT_HERSHEY_SIMPLEX
 
-		for corner in self.corners:
-			frame = cv2.circle(frame,(corner),20,(255,0,0),3)
-
-#		for line in self.fretPoints:
-#			for point in line:
-#				frame = cv2.circle(frame,(point),14,(0,255,255),3)
+		if(self.foundCorners):
+			for corner in self.corners:
+				frame = cv2.circle(frame,(corner),20,(255,0,0),3)
+			x1 = -20
+			strum1 = (x1,int(self.strumLine[0]*x1+self.strumLine[1]))
+			x2 = frame.shape[1]-x1
+			strum2 = (x2,int(self.strumLine[0]*x2+self.strumLine[1]))
+			frame = cv2.line(frame,strum1,strum2,(255,255,0),3)
+		else:
+			fontSize = 1.5
+			textColor = (0,0,0)
+			backgroundColor = (255,255,255)
+			frame = cv2.rectangle(frame,(size[1]//2-150,size[0]//2+50),(size[1]//2+150,size[0]//2-50),backgroundColor,-1)
+			imgMod.putTextCenter(frame,"Corners",(size[1]//2,size[0]//2),textFont,fontSize,textColor,2,cv2.LINE_AA)
+			imgMod.putTextCenter(frame,"Not Found",(size[1]//2,size[0]//2+50),textFont,fontSize,textColor,2,cv2.LINE_AA)
 
 		for finger in self.fingers:
 			frame = cv2.circle(frame,(finger),14,(0,255,255),3)
 
 		textMargin = 100
-		textFont = cv2.FONT_HERSHEY_SIMPLEX
-		cv2.putText(frame,self.currentChord,(frame.shape[1]-textMargin,textMargin),textFont,4,(255,0,255),2,cv2.LINE_AA)
+		frame = cv2.rectangle(frame,(size[1]-textMargin,0),(size[1],textMargin),backgroundColor,-1)
+		imgMod.putTextCenter(frame,self.currentChord,(size[1]-textMargin//2,textMargin//2),textFont,2,(255,0,255),2,cv2.LINE_AA)
 
 		frame = cv2.circle(frame,(self.strumFinger),40,(0,0,255),3)
 
@@ -241,3 +198,7 @@ class FakeUke(object):
 		if(self.soundObject != None):
 			if(not self.soundObject.play()):
 				self.soundObject = None
+
+	def cleanUp(self):
+		pygame.mixer.quit()
+

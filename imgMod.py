@@ -8,10 +8,10 @@ THRESH = 127
 
 def cropImage(frame,sizeX,sizeY):
 	size = frame.shape
-	y1 = (size[0] - sizeX)//2
-	y2 = x1 + sizeX
-	x1 = (size[1] - sizeY)//2
-	x2 = y1 + sizeY
+	x1 = (size[1] - sizeX)//2
+	x2 = x1 + sizeX
+	y1 = (size[0] - sizeY)//2
+	y2 = y1 + sizeY
 	return frame[y1:y2,x1:x2]
 
 def redMask(frame):
@@ -28,7 +28,6 @@ def greenMask(frame):
 	min = np.uint8([[ 40, 50, 50]])
 	max = np.uint8([[ 60,255,255]])
 	hsv = cv2.cvtColor(frame,cv2.COLOR_BGR2HSV)
-
 	return cv2.inRange(hsv,min,max)
 
 def blackMask(frame):
@@ -41,8 +40,10 @@ def blueMask(frame):
 	min = np.uint8([[110, 50, 50]])
 	max = np.uint8([[130,255,255]])
 	hsv = cv2.cvtColor(frame,cv2.COLOR_BGR2HSV)
-
 	return cv2.inRange(hsv,min,max)
+
+# the 6 following functions were taken from
+# https://github.com/VasuAgrawal/112-opencv-tutorial
 
 def erode(image,strength):
 	return cv2.erode(image,np.ones((strength,strength), np.uint8))
@@ -108,6 +109,9 @@ def findBlotches(image,accuracy):
 	
 	return avgArray
 	
+
+# finds the avg location of all the surrounding non-zero pixels
+# used for tracking object with known color and known location
 def avgLocOfSurrounding(frame,point,dirArray):
 	avgX = 0
 	avgY = 0
@@ -125,3 +129,9 @@ def avgLocOfSurrounding(frame,point,dirArray):
 		return (int(avgX/counter),int(avgY/counter))
 	else:
 		return None
+
+def putTextCenter(frame,text,org,fontFace,fontScale,color,thickness=1,lineType = 8,bottomLeftOrigin=False):
+	size = cv2.getTextSize(text,fontFace,fontScale,thickness)
+	newPoint = (org[0]-size[0][0]//2,org[1]-size[0][1]//2)
+	cv2.putText(frame,text,newPoint,fontFace,fontScale,color,thickness,lineType,bottomLeftOrigin)
+	return frame
